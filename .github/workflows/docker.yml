@@ -11,20 +11,21 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v2
+      # --- Acciones actualizadas (más recientes) ---
+      - uses: actions/checkout@v4      # ✅ Antes era @v2
       
       - name: Use Node.js 20.x
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4   # ✅ Antes era @v1
         with:
           node-version: 20.x
           
       - name: npm install
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: build
-        run: npm run build
+        run: npm run build --prod
         
-      - name: list
+      - name: list dist folder
         run: ls -R dist
 
       - name: docker login
@@ -32,21 +33,23 @@ jobs:
           DOCKER_USER: ${{secrets.DOCKER_USER}}
           DOCKER_PASSWORD: ${{secrets.DOCKER_PASSWORD}}
         run: |
-          docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USER" --password-stdin
 
-      # --- ESTE ES EL PASO QUE TE FALTABA ---
-      - name: Download and run the Docker base image
+      - name: Run httpd container
         run: docker run -d --name http_base httpd
 
-      - name: copy model to the Docker image
-        run: docker cp dist/lifegoals/browser/. http_base:/usr/local/apache2/htdocs
+      - name: Copy files to container
+        run: |
+          if [ -d "dist/lifegoals/browser" ]; then
+            docker cp dist/lifegoals/browser/. http_base:/usr/local/apache2/htdocs
+          else
+            docker cp dist/lifegoals/. http_base:/usr/local/apache2/htdocs
+          fi
 
-      - name: Build the custom Docker image
+      - name: Commit and push image
         run: |
-         docker commit --change "ENV MODEL_NAME http_base" http_base ${{secrets.DOCKER_USER}}/lifegoals:${{ github.sha }}
-         docker tag ${{secrets.DOCKER_USER}}/lifegoals:${{ github.sha }} ${{secrets.DOCKER_USER}}/lifegoals:latest
-      - name: Docker Push
-        run: |
+          docker commit --change "ENV MODEL_NAME http_base" http_base ${{secrets.DOCKER_USER}}/lifegoals:${{ github.sha }}
+          docker tag ${{secrets.DOCKER_USER}}/lifegoals:${{ github.sha }} ${{secrets.DOCKER_USER}}/lifegoals:latest
           docker push ${{secrets.DOCKER_USER}}/lifegoals:${{ github.sha }}
           docker push ${{secrets.DOCKER_USER}}/lifegoals:latest
 
