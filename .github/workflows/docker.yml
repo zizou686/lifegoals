@@ -11,21 +11,20 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      # --- Acciones actualizadas (más recientes) ---
-      - uses: actions/checkout@v4      # ✅ Antes era @v2
+      - uses: actions/checkout@v2
       
       - name: Use Node.js 20.x
-        uses: actions/setup-node@v4   # ✅ Antes era @v1
+        uses: actions/setup-node@v1
         with:
           node-version: 20.x
           
       - name: npm install
-        run: npm install --legacy-peer-deps
+        run: npm ci
 
       - name: build
-        run: npm run build --prod
+        run: npm run build
         
-      - name: list dist folder
+      - name: list
         run: ls -R dist
 
       - name: docker login
@@ -33,23 +32,21 @@ jobs:
           DOCKER_USER: ${{secrets.DOCKER_USER}}
           DOCKER_PASSWORD: ${{secrets.DOCKER_PASSWORD}}
         run: |
-          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USER" --password-stdin
+          docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
 
-      - name: Run httpd container
+      # --- ESTE ES EL PASO QUE TE FALTABA ---
+      - name: Download and run the Docker base image
         run: docker run -d --name http_base httpd
 
-      - name: Copy files to container
-        run: |
-          if [ -d "dist/lifegoals/browser" ]; then
-            docker cp dist/lifegoals/browser/. http_base:/usr/local/apache2/htdocs
-          else
-            docker cp dist/lifegoals/. http_base:/usr/local/apache2/htdocs
-          fi
+      - name: copy model to the Docker image
+        run: docker cp dist/lifegoals/browser/. http_base:/usr/local/apache2/htdocs
 
-      - name: Commit and push image
+      - name: Build the custom Docker image
         run: |
-          docker commit --change "ENV MODEL_NAME http_base" http_base ${{secrets.DOCKER_USER}}/lifegoals:${{ github.sha }}
-          docker tag ${{secrets.DOCKER_USER}}/lifegoals:${{ github.sha }} ${{secrets.DOCKER_USER}}/lifegoals:latest
+         docker commit --change "ENV MODEL_NAME http_base" http_base ${{secrets.DOCKER_USER}}/lifegoals:${{ github.sha }}
+         docker tag ${{secrets.DOCKER_USER}}/lifegoals:${{ github.sha }} ${{secrets.DOCKER_USER}}/lifegoals:latest
+      - name: Docker Push
+        run: |
           docker push ${{secrets.DOCKER_USER}}/lifegoals:${{ github.sha }}
           docker push ${{secrets.DOCKER_USER}}/lifegoals:latest
 
